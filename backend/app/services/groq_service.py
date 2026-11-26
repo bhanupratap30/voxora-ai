@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+import logging
 import os
 from pathlib import Path
 import re
@@ -264,6 +265,7 @@ def generate_chat_reply(
     message: str,
     language: str = "English",
     session_id: str = "default",
+    workspace_id: int | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Retrieve RAG context, update lead qualification, call Groq, and return (reply, model, meta)."""
     api_key = os.getenv("GROQ_API_KEY", "").strip()
@@ -272,7 +274,9 @@ def generate_chat_reply(
 
     session = get_or_create_session(session_id)
     sentiment_data = analyze_customer_sentiment(message, session["history"][-4:])
-    lead_meta = update_session_lead(session_id, message, sentiment_data=sentiment_data)
+    lead_meta = update_session_lead(
+        session_id, message, sentiment_data=sentiment_data, workspace_id=workspace_id
+    )
     booking_note, booked_appt = _process_booking_intent(session, session_id, message, lead_meta)
     rag_result = retrieve_relevant_chunks(message)
     chunks = rag_result["chunks"]
@@ -312,11 +316,15 @@ def generate_chat_reply(
     messages_payload.append({"role": "user", "content": user_content})
 
     model = get_groq_model()
-    client = Groq(api_key=api_key)
+    logger = logging.getLogger("voxora.voice")
+    logger.info("MESSAGE PROCESSED: session=%s rag_chunks=%d", session_id, len(chunks))
+    logger.info("GROQ REQUEST STARTED: model=%s", model)
+    client = Groq(api_key=api_key, timeout=20.0)
     completion = client.chat.completions.create(
         model=model,
         messages=messages_payload,
     )
+    logger.info("GROQ RESPONSE RECEIVED: model=%s", model)
     reply = completion.choices[0].message.content or ""
 
     session["history"].append({"role": "user", "content": message})

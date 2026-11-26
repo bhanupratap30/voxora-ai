@@ -15,6 +15,7 @@ class Appointment(Base):
     __tablename__ = "appointments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     lead_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True
     )

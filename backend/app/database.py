@@ -50,6 +50,12 @@ def init_db() -> bool:
         from app.models.lead import Lead  # noqa: F401
         from app.models.appointment import Appointment  # noqa: F401
         from app.models.call import Call  # noqa: F401
+        from app.models.auth import (  # noqa: F401
+            UserProfile,
+            Workspace,
+            WorkspaceInvitation,
+            WorkspaceMember,
+        )
 
         Base.metadata.create_all(bind=engine)
         _ensure_lead_insight_columns(engine)
@@ -73,6 +79,9 @@ def _ensure_lead_insight_columns(engine) -> None:
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS preferred_callback_time VARCHAR(64)",
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS human_followup_requested BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS followup_status VARCHAR(32)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
+        "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
+        "ALTER TABLE calls ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
     ]
     with engine.begin() as conn:
         for stmt in alter_statements:

@@ -1,11 +1,21 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import date, time
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.analytics_service import get_analytics
+from app.auth_service import (
+    VALID_ROLES,
+    ensure_user_onboarded,
+    get_current_user,
+    get_current_workspace,
+    require_role,
+)
+from app.models.auth import UserProfile, Workspace, WorkspaceInvitation, WorkspaceMember
 from app.appointment_service import (
     AppointmentConflictError,
     AppointmentValidationError,
@@ -164,17 +174,27 @@ async def remove_knowledge_base_document(document_id: str) -> dict:
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest) -> ChatResponse:
+async def chat(
+    payload: ChatRequest,
+    ctx: dict = Depends(get_current_workspace),
+) -> ChatResponse:
     """Send a user message to Groq with RAG context and return the AI response."""
+    logger = logging.getLogger("voxora.voice")
+    logger.info("REQUEST RECEIVED: /api/chat")
+    logger.info("SESSION IDENTIFIED: %s", payload.session_id)
     try:
-        reply, model, meta = generate_chat_reply(
+        reply, model, meta = await run_in_threadpool(
+            generate_chat_reply,
             payload.message,
-            language=payload.language,
-            session_id=payload.session_id,
+            payload.language,
+            payload.session_id,
+            ctx["workspace_id"],
         )
+        logger.info("RESPONSE SENT TO FRONTEND: session=%s", payload.session_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception("Chat processing failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail=f"Groq API request failed: {type(exc).__name__}",
@@ -226,10 +246,11 @@ async def list_leads(
     limit: int = Query(default=20, ge=1, le=100),
     search: str | None = Query(default=None, max_length=128),
     category: str | None = Query(default=None, max_length=32),
+    ctx: dict = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> dict:
-    """List persisted CRM leads with pagination and optional search/category filters."""
-    query = db.query(Lead)
+    """List persisted CRM leads scoped to the active workspace."""
+    query = db.query(Lead).filter(Lead.workspace_id == ctx["workspace_id"])
     if category and category in {"Hot", "Warm", "Cold"}:
         query = query.filter(Lead.lead_category == category)
     if search and search.strip():
@@ -634,7 +655,98 @@ async def get_call_endpoint(call_id: int, db: Session = Depends(get_db)) -> dict
 async def get_analytics_endpoint(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
+    ctx: dict = Depends(require_role({"OWNER", "ADMIN", "MANAGER"})),
     db: Session = Depends(get_db),
 ) -> dict:
     """Return sales analytics and AI-generated insights from PostgreSQL."""
     return get_analytics(db, start_date=start_date, end_date=end_date)
+
+
+class OnboardRequest(BaseModel):
+    full_name: str | None = Field(default=None, max_length=255)
+    account_type: str = Field(default="individual", max_length=32)
+    company_name: str | None = Field(default=None, max_length=255)
+
+
+class InviteRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    role: str = Field(default="SALES_AGENT", max_length=32)
+
+
+@app.post("/api/auth/onboard")
+async def onboard_user(
+    payload: OnboardRequest,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Idempotently onboard an authenticated Supabase user into a personal or company workspace."""
+    return ensure_user_onboarded(
+        db,
+        user,
+        full_name=payload.full_name,
+        account_type=payload.account_type,
+        company_name=payload.company_name,
+    )
+
+
+@app.get("/api/auth/me")
+async def get_me(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return the authenticated user's profile and workspaces."""
+    return ensure_user_onboarded(db, user)
+
+
+@app.post("/api/workspaces/invite")
+async def invite_workspace_member(
+    payload: InviteRequest,
+    ctx: dict = Depends(require_role({"OWNER", "ADMIN"})),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Invite a member to the active company workspace."""
+    role = payload.role.strip().upper()
+    if role not in VALID_ROLES or role == "OWNER":
+        raise HTTPException(status_code=400, detail="Invalid role for invitation.")
+    inv = WorkspaceInvitation(
+        workspace_id=ctx["workspace_id"],
+        email=payload.email.strip().lower(),
+        role=role,
+        status="pending",
+        invited_by=ctx["user_id"],
+    )
+    db.add(inv)
+    db.commit()
+    db.refresh(inv)
+    return {
+        "id": inv.id,
+        "workspace_id": inv.workspace_id,
+        "email": inv.email,
+        "role": inv.role,
+        "status": inv.status,
+    }
+
+
+@app.get("/api/workspaces/members")
+async def list_workspace_members(
+    ctx: dict = Depends(require_role({"OWNER", "ADMIN", "MANAGER"})),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List members of the active workspace."""
+    rows = (
+        db.query(WorkspaceMember, UserProfile)
+        .outerjoin(UserProfile, UserProfile.supabase_user_id == WorkspaceMember.supabase_user_id)
+        .filter(WorkspaceMember.workspace_id == ctx["workspace_id"])
+        .all()
+    )
+    return {
+        "members": [
+            {
+                "user_id": mem.supabase_user_id,
+                "role": mem.role,
+                "email": prof.email if prof else None,
+                "full_name": prof.full_name if prof else None,
+            }
+            for mem, prof in rows
+        ]
+    }

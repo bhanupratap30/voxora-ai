@@ -11,6 +11,39 @@ const apiClient = axios.create({
   timeout: 30000,
 });
 
+export function setAuthHeaders(accessToken, workspaceId) {
+  if (accessToken) {
+    apiClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+  } else {
+    delete apiClient.defaults.headers.common.Authorization;
+  }
+  if (workspaceId) {
+    apiClient.defaults.headers.common['X-Workspace-Id'] = String(workspaceId);
+  } else {
+    delete apiClient.defaults.headers.common['X-Workspace-Id'];
+  }
+}
+
+export async function onboardUser(payload = {}) {
+  const response = await apiClient.post('/api/auth/onboard', payload);
+  return response.data;
+}
+
+export async function getMe() {
+  const response = await apiClient.get('/api/auth/me');
+  return response.data;
+}
+
+export async function inviteWorkspaceMember(email, role = 'SALES_AGENT') {
+  const response = await apiClient.post('/api/workspaces/invite', { email, role });
+  return response.data;
+}
+
+export async function getWorkspaceMembers() {
+  const response = await apiClient.get('/api/workspaces/members');
+  return response.data;
+}
+
 export async function sendChatMessage(
   message,
   language = 'English',

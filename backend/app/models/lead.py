@@ -15,6 +15,7 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     session_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

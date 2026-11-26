@@ -264,6 +264,7 @@ def persist_lead_to_db(
     session_id: str,
     qualification: dict[str, Any],
     sentiment_data: dict[str, Any] | None = None,
+    workspace_id: int | None = None,
 ) -> None:
     """Persist or update a lead record in PostgreSQL without breaking chat on failure."""
     try:
@@ -281,8 +282,10 @@ def persist_lead_to_db(
             collected = qualification.get("collected_fields") or {}
 
             if lead is None:
-                lead = Lead(session_id=sid)
+                lead = Lead(session_id=sid, workspace_id=workspace_id)
                 db.add(lead)
+            elif workspace_id is not None and lead.workspace_id is None:
+                lead.workspace_id = workspace_id
 
             for field in ALL_LEAD_FIELDS:
                 if field in collected:
@@ -317,10 +320,16 @@ def update_session_lead(
     session_id: str,
     message: str,
     sentiment_data: dict[str, Any] | None = None,
+    workspace_id: int | None = None,
 ) -> dict[str, Any]:
     """Extract fields from message, update session, persist to DB, and return qualification metadata."""
     session = get_or_create_session(session_id)
     session["fields"] = extract_lead_fields(message, session["fields"])
     qualification = calculate_lead_score(session["fields"])
-    persist_lead_to_db(session_id, qualification, sentiment_data=sentiment_data)
+    persist_lead_to_db(
+        session_id,
+        qualification,
+        sentiment_data=sentiment_data,
+        workspace_id=workspace_id,
+    )
     return qualification

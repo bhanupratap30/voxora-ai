@@ -104,7 +104,7 @@ def analyze_customer_sentiment(
     ) + f"Latest customer message: {message}"
 
     try:
-        client = Groq(api_key=api_key)
+        client = Groq(api_key=api_key, timeout=15.0)
         completion = client.chat.completions.create(
             model=model,
             messages=[

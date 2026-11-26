@@ -15,6 +15,7 @@ class Call(Base):
     __tablename__ = "calls"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     session_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     lead_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True
