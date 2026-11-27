@@ -51,6 +51,7 @@ def init_db() -> bool:
         from app.models.appointment import Appointment  # noqa: F401
         from app.models.call import Call  # noqa: F401
         from app.models.auth import (  # noqa: F401
+            AdminAuditLog,
             UserProfile,
             Workspace,
             WorkspaceInvitation,
@@ -82,6 +83,8 @@ def _ensure_lead_insight_columns(engine) -> None:
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
         "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
         "ALTER TABLE calls ADD COLUMN IF NOT EXISTS workspace_id INTEGER",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
     ]
     with engine.begin() as conn:
         for stmt in alter_statements:

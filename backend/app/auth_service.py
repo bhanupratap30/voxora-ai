@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.appointment import Appointment
-from app.models.auth import UserProfile, Workspace, WorkspaceInvitation, WorkspaceMember
+from app.models.auth import (
+    AdminAuditLog,
+    UserProfile,
+    Workspace,
+    WorkspaceInvitation,
+    WorkspaceMember,
+)
 from app.models.call import Call
 from app.models.lead import Lead
 
@@ -127,6 +133,9 @@ def ensure_user_onboarded(
     resolved_name = (full_name or meta.get("full_name") or meta.get("name") or "").strip() or None
     resolved_avatar = meta.get("avatar_url") or meta.get("picture")
 
+    super_admin_email = os.getenv("VOXORA_SUPER_ADMIN_EMAIL", "").strip().lower()
+    is_super_admin = bool(super_admin_email and email and email == super_admin_email)
+
     profile = db.query(UserProfile).filter(UserProfile.supabase_user_id == user_id).first()
     if profile is None:
         profile = UserProfile(
@@ -135,9 +144,16 @@ def ensure_user_onboarded(
             full_name=resolved_name,
             avatar_url=resolved_avatar,
             account_type=account_type if account_type in {"individual", "company"} else "individual",
+            is_super_admin=is_super_admin,
+            is_active=True,
         )
         db.add(profile)
         db.flush()
+    elif is_super_admin and not profile.is_super_admin:
+        profile.is_super_admin = True
+
+    if not profile.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated.")
 
     # Accept any pending invitations for this email
     if email:
@@ -220,6 +236,8 @@ def ensure_user_onboarded(
         "full_name": profile.full_name,
         "avatar_url": profile.avatar_url,
         "account_type": profile.account_type,
+        "is_super_admin": profile.is_super_admin,
+        "is_active": profile.is_active,
         "workspaces": workspaces,
     }
 
@@ -271,3 +289,43 @@ def require_role(allowed_roles: set[str]):
         return ctx
 
     return _checker
+
+
+def require_super_admin(
+    user: dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Enforce SUPER_ADMIN role on admin-only endpoints."""
+    profile = db.query(UserProfile).filter(UserProfile.supabase_user_id == user["user_id"]).first()
+    if profile is None or not profile.is_active or not profile.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="SUPER_ADMIN privileges are required.",
+        )
+    return {
+        "user_id": user["user_id"],
+        "email": profile.email,
+        "full_name": profile.full_name,
+    }
+
+
+def record_admin_audit(
+    db: Session,
+    admin_user: dict[str, Any],
+    action: str,
+    target_user_id: str | None = None,
+    target_workspace_id: int | None = None,
+    details: str | None = None,
+) -> None:
+    """Persist an administrative audit log entry."""
+    db.add(
+        AdminAuditLog(
+            admin_user_id=admin_user["user_id"],
+            admin_email=admin_user["email"],
+            action=action,
+            target_user_id=target_user_id,
+            target_workspace_id=target_workspace_id,
+            details=details,
+        )
+    )
+    db.commit()

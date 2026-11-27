@@ -8,8 +8,10 @@ import {
   PhoneCall,
   BarChart3,
   Settings,
+  Shield,
   X,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,6 +25,11 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
+  const { profile } = useAuth() || {};
+  const items = profile?.is_super_admin
+    ? [...NAV_ITEMS, { to: '/admin', label: 'Admin Portal', icon: Shield }]
+    : NAV_ITEMS;
+
   return (
     <>
       {isOpen && (
@@ -49,7 +56,7 @@ export default function Sidebar({ isOpen, onClose }) {
         </div>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

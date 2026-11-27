@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
+import AdminRoute from './components/auth/AdminRoute.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import VoiceAgent from './pages/VoiceAgent.jsx';
@@ -15,6 +16,7 @@ import Signup from './pages/Signup.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import Profile from './pages/Profile.jsx';
+import AdminPortal from './pages/AdminPortal.jsx';
 
 export default function App() {
   return (
@@ -37,6 +39,9 @@ export default function App() {
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
+              <Route element={<AdminRoute />}>
+                <Route path="/admin" element={<AdminPortal />} />
+              </Route>
             </Route>
           </Route>
 

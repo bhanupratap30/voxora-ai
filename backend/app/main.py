@@ -13,9 +13,17 @@ from app.auth_service import (
     ensure_user_onboarded,
     get_current_user,
     get_current_workspace,
+    record_admin_audit,
     require_role,
+    require_super_admin,
 )
-from app.models.auth import UserProfile, Workspace, WorkspaceInvitation, WorkspaceMember
+from app.models.auth import (
+    AdminAuditLog,
+    UserProfile,
+    Workspace,
+    WorkspaceInvitation,
+    WorkspaceMember,
+)
 from app.appointment_service import (
     AppointmentConflictError,
     AppointmentValidationError,
@@ -748,5 +756,170 @@ async def list_workspace_members(
                 "full_name": prof.full_name if prof else None,
             }
             for mem, prof in rows
+        ]
+    }
+
+
+@app.get("/api/admin/overview")
+async def admin_overview(
+    _admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Platform-wide overview metrics for SUPER_ADMIN."""
+    return {
+        "total_users": db.query(UserProfile).count(),
+        "active_users": db.query(UserProfile).filter(UserProfile.is_active.is_(True)).count(),
+        "total_workspaces": db.query(Workspace).count(),
+        "total_leads": db.query(Lead).count(),
+        "total_calls": db.query(Call).count(),
+        "total_appointments": db.query(Appointment).count(),
+    }
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(
+    search: str | None = Query(default=None, max_length=128),
+    _admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List all registered users with workspace and role info."""
+    query = db.query(UserProfile)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(UserProfile.email.ilike(term), UserProfile.full_name.ilike(term))
+        )
+    users = query.order_by(UserProfile.created_at.desc()).all()
+    result = []
+    for u in users:
+        memberships = (
+            db.query(WorkspaceMember, Workspace)
+            .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
+            .filter(WorkspaceMember.supabase_user_id == u.supabase_user_id)
+            .all()
+        )
+        result.append(
+            {
+                "user_id": u.supabase_user_id,
+                "email": u.email,
+                "full_name": u.full_name,
+                "account_type": u.account_type,
+                "is_super_admin": u.is_super_admin,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "workspaces": [
+                    {"id": ws.id, "name": ws.name, "role": mem.role}
+                    for mem, ws in memberships
+                ],
+            }
+        )
+    return {"users": result}
+
+
+@app.patch("/api/admin/users/{user_id}/status")
+async def admin_toggle_user_status(
+    user_id: str,
+    is_active: bool = Query(...),
+    admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Activate or deactivate a user account."""
+    profile = db.query(UserProfile).filter(UserProfile.supabase_user_id == user_id).first()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if profile.supabase_user_id == admin["user_id"] and not is_active:
+        raise HTTPException(status_code=400, detail="Cannot deactivate your own SUPER_ADMIN account.")
+    profile.is_active = is_active
+    db.commit()
+    record_admin_audit(
+        db,
+        admin,
+        action="USER_STATUS_UPDATED",
+        target_user_id=user_id,
+        details=f"is_active={is_active}",
+    )
+    return {"user_id": user_id, "is_active": profile.is_active}
+
+
+@app.get("/api/admin/workspaces")
+async def admin_list_workspaces(
+    _admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List all workspaces and usage counts."""
+    workspaces = db.query(Workspace).order_by(Workspace.created_at.desc()).all()
+    items = []
+    for ws in workspaces:
+        items.append(
+            {
+                "id": ws.id,
+                "name": ws.name,
+                "workspace_type": ws.workspace_type,
+                "owner_user_id": ws.owner_user_id,
+                "is_legacy": ws.is_legacy,
+                "created_at": ws.created_at.isoformat() if ws.created_at else None,
+                "member_count": db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == ws.id).count(),
+                "lead_count": db.query(Lead).filter(Lead.workspace_id == ws.id).count(),
+                "call_count": db.query(Call).filter(Call.workspace_id == ws.id).count(),
+            }
+        )
+    return {"workspaces": items}
+
+
+@app.get("/api/admin/users/{user_id}/inspect")
+async def admin_inspect_user(
+    user_id: str,
+    admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Inspect a user's leads and calls with mandatory audit logging."""
+    profile = db.query(UserProfile).filter(UserProfile.supabase_user_id == user_id).first()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    ws_ids = [
+        m.workspace_id
+        for m in db.query(WorkspaceMember).filter(WorkspaceMember.supabase_user_id == user_id).all()
+    ]
+    leads = db.query(Lead).filter(Lead.workspace_id.in_(ws_ids)).all() if ws_ids else []
+    calls = db.query(Call).filter(Call.workspace_id.in_(ws_ids)).all() if ws_ids else []
+
+    record_admin_audit(
+        db,
+        admin,
+        action="USER_DATA_INSPECTED",
+        target_user_id=user_id,
+        details=f"Inspected {len(leads)} leads and {len(calls)} calls",
+    )
+
+    return {
+        "user": {
+            "user_id": profile.supabase_user_id,
+            "email": profile.email,
+            "full_name": profile.full_name,
+        },
+        "leads": [_serialize_lead(l) for l in leads],
+        "calls": [_serialize_call(c) for c in calls],
+    }
+
+
+@app.get("/api/admin/audit-logs")
+async def admin_audit_logs(
+    _admin: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List recent administrative audit logs."""
+    logs = db.query(AdminAuditLog).order_by(AdminAuditLog.created_at.desc()).limit(50).all()
+    return {
+        "logs": [
+            {
+                "id": log.id,
+                "admin_email": log.admin_email,
+                "action": log.action,
+                "target_user_id": log.target_user_id,
+                "details": log.details,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
         ]
     }

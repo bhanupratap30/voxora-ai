@@ -44,6 +44,41 @@ export async function getWorkspaceMembers() {
   return response.data;
 }
 
+export async function getAdminOverview() {
+  const response = await apiClient.get('/api/admin/overview');
+  return response.data;
+}
+
+export async function getAdminUsers(search = '') {
+  const params = search ? { search } : {};
+  const response = await apiClient.get('/api/admin/users', { params });
+  return response.data;
+}
+
+export async function toggleAdminUserStatus(userId, isActive) {
+  const response = await apiClient.patch(
+    `/api/admin/users/${userId}/status`,
+    null,
+    { params: { is_active: isActive } }
+  );
+  return response.data;
+}
+
+export async function getAdminWorkspaces() {
+  const response = await apiClient.get('/api/admin/workspaces');
+  return response.data;
+}
+
+export async function inspectAdminUser(userId) {
+  const response = await apiClient.get(`/api/admin/users/${userId}/inspect`);
+  return response.data;
+}
+
+export async function getAdminAuditLogs() {
+  const response = await apiClient.get('/api/admin/audit-logs');
+  return response.data;
+}
+
 export async function sendChatMessage(
   message,
   language = 'English',

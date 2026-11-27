@@ -20,6 +20,8 @@ class UserProfile(Base):
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     account_type: Mapped[str] = mapped_column(String(32), default="individual", nullable=False)
+    is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
@@ -67,4 +69,19 @@ class WorkspaceInvitation(Base):
     role: Mapped[str] = mapped_column(String(32), default="SALES_AGENT", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     invited_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class AdminAuditLog(Base):
+    """Audit log for sensitive administrative actions."""
+
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    admin_user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    admin_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_workspace_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    details: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
