@@ -139,8 +139,9 @@ def _process_booking_intent(
     wants_booking = booking.get("booking_status", "not_requested") != "not_requested" or any(
         kw in lower
         for kw in [
-            "book", "schedule", "demo", "appointment", "meeting",
-            "डेमो", "अपॉइंटमेंट", "मीटिंग", "बुक",
+            "book", "schedule", "demo", "demonstration", "walkthrough",
+            "appointment", "meeting", "show me how", "trying your product",
+            "arrange", "डेमो", "अपॉइंटमेंट", "मीटिंग", "बुक",
         ]
     )
     if not wants_booking:
@@ -233,7 +234,9 @@ def _process_booking_intent(
             db,
             customer_name=customer_name,
             company_name=company_name,
+            customer_email=collected.get("email"),
             lead_id=lead_row.id if lead_row else None,
+            workspace_id=lead_row.workspace_id if lead_row else None,
             appointment_date=booking["date"],
             start_time=booking["time"],
             meeting_type=booking.get("meeting_type", "online"),

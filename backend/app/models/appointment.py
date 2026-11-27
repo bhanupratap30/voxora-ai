@@ -20,10 +20,13 @@ class Appointment(Base):
         Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True
     )
     customer_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    customer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     appointment_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="scheduled", nullable=False)
     meeting_type: Mapped[str] = mapped_column(String(32), default="online", nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,11 +1,15 @@
 from datetime import date, datetime, time, timedelta
+import os
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.appointment import Appointment
 
-DEFAULT_DEMO_DURATION_MINUTES = 30
+DEFAULT_DEMO_DURATION_MINUTES = int(os.getenv("DEMO_DURATION_MINUTES", "30"))
+BUSINESS_START_HOUR = int(os.getenv("BUSINESS_START_HOUR", "9"))
+BUSINESS_END_HOUR = int(os.getenv("BUSINESS_END_HOUR", "18"))
+DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "Asia/Kolkata")
 ALLOWED_STATUSES = {"scheduled", "cancelled", "completed"}
 ALLOWED_MEETING_TYPES = {"online", "phone"}
 
@@ -42,6 +46,15 @@ def _validate_not_in_past(appointment_date: date, start_time: time) -> None:
         raise AppointmentValidationError("Appointment date and time must be in the future.")
 
 
+def _validate_business_hours(start_time: time, end_time: time) -> None:
+    b_start = time(BUSINESS_START_HOUR, 0)
+    b_end = time(BUSINESS_END_HOUR, 0)
+    if start_time < b_start or end_time > b_end:
+        raise AppointmentValidationError(
+            f"Appointments must be within business hours ({BUSINESS_START_HOUR:02d}:00–{BUSINESS_END_HOUR:02d}:00)."
+        )
+
+
 def check_slot_availability(
     db: Session,
     appointment_date: date,
@@ -51,6 +64,7 @@ def check_slot_availability(
     """Check if a slot is available and suggest alternatives if not."""
     resolved_end = _compute_end_time(appointment_date, start_time, end_time)
     _validate_not_in_past(appointment_date, start_time)
+    _validate_business_hours(start_time, resolved_end)
 
     overlapping = (
         db.query(Appointment)
@@ -111,7 +125,11 @@ def create_appointment(
     start_time: time,
     end_time: time | None = None,
     company_name: str | None = None,
+    customer_email: str | None = None,
+    phone: str | None = None,
+    timezone: str = DEFAULT_TIMEZONE,
     lead_id: int | None = None,
+    workspace_id: int | None = None,
     meeting_type: str = "online",
     notes: str | None = None,
 ) -> Appointment:
@@ -126,6 +144,8 @@ def create_appointment(
 
     resolved_end = _compute_end_time(appointment_date, start_time, end_time)
     _validate_not_in_past(appointment_date, start_time)
+    _validate_business_hours(start_time, resolved_end)
+    _validate_business_hours(start_time, resolved_end)
 
     # Lock existing scheduled rows for this date to prevent concurrent double-booking
     existing_for_date = (
@@ -146,12 +166,16 @@ def create_appointment(
         )
 
     appointment = Appointment(
+        workspace_id=workspace_id,
         lead_id=lead_id,
         customer_name=clean_name,
+        customer_email=customer_email.strip().lower() if customer_email else None,
+        phone=phone.strip() if phone else None,
         company_name=company_name.strip() if company_name else None,
         appointment_date=appointment_date,
         start_time=start_time,
         end_time=resolved_end,
+        timezone=(timezone or DEFAULT_TIMEZONE).strip(),
         status="scheduled",
         meeting_type=clean_type,
         notes=notes.strip() if notes else None,
@@ -164,12 +188,15 @@ def create_appointment(
 
 def list_appointments(
     db: Session,
+    workspace_id: int | None = None,
     status: str | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> tuple[list[Appointment], int]:
     """List appointments ordered by date and start time."""
     query = db.query(Appointment)
+    if workspace_id is not None:
+        query = query.filter(Appointment.workspace_id == workspace_id)
     if status and status in ALLOWED_STATUSES:
         query = query.filter(Appointment.status == status)
     total = query.count()

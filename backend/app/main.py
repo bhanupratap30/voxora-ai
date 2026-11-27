@@ -334,12 +334,23 @@ class AppointmentCreateRequest(BaseModel):
 
     lead_id: int | None = None
     customer_name: str = Field(..., min_length=1, max_length=255)
+    customer_email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
     company_name: str | None = Field(default=None, max_length=255)
     appointment_date: date
     start_time: time
     end_time: time | None = None
+    timezone: str = Field(default="Asia/Kolkata", max_length=64)
     meeting_type: str = Field(default="online", max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class AvailabilityCheckRequest(BaseModel):
+    """Request payload for POST /api/appointments/availability."""
+
+    appointment_date: date
+    start_time: time
+    end_time: time | None = None
 
 
 class AppointmentUpdateRequest(BaseModel):
@@ -352,12 +363,16 @@ class AppointmentUpdateRequest(BaseModel):
 def _serialize_appointment(appt: Appointment) -> dict:
     return {
         "id": appt.id,
+        "workspace_id": appt.workspace_id,
         "lead_id": appt.lead_id,
         "customer_name": appt.customer_name,
+        "customer_email": appt.customer_email,
+        "phone": appt.phone,
         "company_name": appt.company_name,
         "appointment_date": appt.appointment_date.isoformat(),
         "start_time": appt.start_time.strftime("%H:%M"),
         "end_time": appt.end_time.strftime("%H:%M"),
+        "timezone": appt.timezone,
         "status": appt.status,
         "meeting_type": appt.meeting_type,
         "notes": appt.notes,
@@ -371,11 +386,29 @@ async def get_appointments(
     status: str | None = Query(default=None, max_length=32),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
+    ctx: dict = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> dict:
-    """List appointments."""
-    items, total = list_appointments(db, status=status, skip=skip, limit=limit)
+    """List appointments scoped to the active workspace."""
+    items, total = list_appointments(
+        db, workspace_id=ctx["workspace_id"], status=status, skip=skip, limit=limit
+    )
     return {"appointments": [_serialize_appointment(item) for item in items], "total": total}
+
+
+@app.post("/api/appointments/availability")
+async def post_appointment_availability(
+    payload: AvailabilityCheckRequest,
+    _ctx: dict = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Check slot availability and suggest alternatives if unavailable."""
+    try:
+        return check_slot_availability(
+            db, payload.appointment_date, payload.start_time, payload.end_time
+        )
+    except AppointmentValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/appointments/availability")
@@ -407,6 +440,7 @@ async def get_appointment_detail(
 @app.post("/api/appointments", status_code=201)
 async def create_new_appointment(
     payload: AppointmentCreateRequest,
+    ctx: dict = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> dict:
     """Create a new scheduled appointment."""
@@ -418,7 +452,11 @@ async def create_new_appointment(
             start_time=payload.start_time,
             end_time=payload.end_time,
             company_name=payload.company_name,
+            customer_email=payload.customer_email,
+            phone=payload.phone,
+            timezone=payload.timezone,
             lead_id=payload.lead_id,
+            workspace_id=ctx["workspace_id"],
             meeting_type=payload.meeting_type,
             notes=payload.notes,
         )
