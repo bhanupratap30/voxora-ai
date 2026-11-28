@@ -580,6 +580,18 @@ export default function VoiceAgent() {
               status === 'Processing' ||
               status === 'Speaking'
             }
+            state={
+              status === 'Listening'
+                ? 'listening'
+                : status === 'Processing'
+                  ? 'thinking'
+                  : status === 'Speaking'
+                    ? 'speaking'
+                    : status === 'Error'
+                      ? 'error'
+                      : 'idle'
+            }
+            mediaStream={mediaStreamRef.current}
           />
 
           <div className="ai-response-panel">

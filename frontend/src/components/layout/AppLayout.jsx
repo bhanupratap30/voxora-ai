@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import CursorGlow from './CursorGlow.jsx';
+import MagneticCursor from '../animations/MagneticCursor.jsx';
+import PageTransition from '../animations/PageTransition.jsx';
+import ParticleNetwork from '../animations/ParticleNetwork.jsx';
 import Sidebar from './Sidebar.jsx';
 import Topbar from './Topbar.jsx';
 
@@ -22,12 +24,15 @@ export default function AppLayout() {
 
   return (
     <div className="app-layout">
-      <CursorGlow />
+      <ParticleNetwork />
+      <MagneticCursor />
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="app-main">
         <Topbar title={title} onMenuClick={() => setSidebarOpen(true)} />
         <main className="app-content">
-          <Outlet />
+          <PageTransition>
+            <Outlet />
+          </PageTransition>
         </main>
       </div>
     </div>

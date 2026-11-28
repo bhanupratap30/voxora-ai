@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bot, Sparkles } from 'lucide-react';
+import MagneticCursor from '../animations/MagneticCursor.jsx';
+import ParticleNetwork from '../animations/ParticleNetwork.jsx';
 import AudioWaveform from '../voice/AudioWaveform.jsx';
 import '../../styles/auth.css';
 
@@ -21,6 +23,8 @@ export default function AuthLayout({ children }) {
 
   return (
     <div className="auth-split-shell">
+      <ParticleNetwork />
+      <MagneticCursor />
       <div className="auth-bg-orb auth-bg-orb-1" aria-hidden="true" />
       <div className="auth-bg-orb auth-bg-orb-2" aria-hidden="true" />
 

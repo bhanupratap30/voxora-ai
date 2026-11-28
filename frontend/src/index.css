@@ -1047,6 +1047,21 @@ body::before {
   }
 }
 
+.page-transition-enter {
+  animation: pageFadeSlide 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pageFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Command Centre Dashboard */
 .command-centre {
   display: flex;

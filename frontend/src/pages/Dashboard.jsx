@@ -12,6 +12,7 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react';
+import AnimatedNumber from '../components/animations/AnimatedNumber.jsx';
 import AudioWaveform from '../components/voice/AudioWaveform.jsx';
 import { getDashboardSummary, getHealthStatus } from '../services/api.js';
 
@@ -106,7 +107,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="bento-kpi-number">
-            {isLoading ? '...' : summary ? summary.total_calls : '--'}
+            {isLoading ? '...' : summary ? <AnimatedNumber value={summary.total_calls} /> : '--'}
           </div>
           <p className="bento-kpi-meta">Completed voice & chat sessions</p>
         </article>
@@ -119,7 +120,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="bento-kpi-number">
-            {isLoading ? '...' : summary ? summary.total_leads : '--'}
+            {isLoading ? '...' : summary ? <AnimatedNumber value={summary.total_leads} /> : '--'}
           </div>
           <p className="bento-kpi-meta">Captured in CRM</p>
         </article>
@@ -132,7 +133,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="bento-kpi-number">
-            {isLoading ? '...' : summary ? summary.qualified_leads : '--'}
+            {isLoading ? '...' : summary ? <AnimatedNumber value={summary.qualified_leads} /> : '--'}
           </div>
           <p className="bento-kpi-meta">Score 40+ or complete</p>
         </article>
@@ -145,7 +146,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="bento-kpi-number">
-            {isLoading ? '...' : summary ? summary.total_appointments : '--'}
+            {isLoading ? '...' : summary ? <AnimatedNumber value={summary.total_appointments} /> : '--'}
           </div>
           <p className="bento-kpi-meta">Scheduled demos</p>
         </article>
